@@ -1,0 +1,23 @@
+# ======================
+# Backend (Django)
+# ======================
+backend/venv/
+backend/db.sqlite3
+__pycache__/
+*.pyc
+.env
+
+# ======================
+# Future Flutter Frontend
+# ======================
+frontend/build/
+frontend/.dart_tool/
+frontend/.idea/
+
+# ======================
+# VS Code
+# ======================
+.vscode/
+
+# OS
+.DS_Store
