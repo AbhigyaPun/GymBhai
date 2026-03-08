@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'attendance_screen.dart';
 import 'workout_screen.dart';
@@ -29,14 +30,6 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gym Bhai'),
-        actions: [
-          Builder(
-            builder: (ctx) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-            ),
-          ),
-        ],
       ),
       drawer: AppDrawer(
         currentIndex: _currentIndex,
