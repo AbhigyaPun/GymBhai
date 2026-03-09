@@ -1,9 +1,24 @@
 from django.urls import path
-from .views import AdminLoginView, MemberLoginView, MemberListCreateView, MemberDetailView
+from .views import (
+    AdminLoginView, MemberLoginView,
+    MemberListCreateView, MemberDetailView,
+    MemberQRView,
+    AttendanceScanView, AttendanceListView,
+)
 
 urlpatterns = [
-    path('login/', AdminLoginView.as_view(), name='admin-login'),
-    path('member/login/', MemberLoginView.as_view(), name='member-login'),
-    path('members/', MemberListCreateView.as_view(), name='member-list-create'),
+    # Auth
+    path('login/',         AdminLoginView.as_view(),       name='admin-login'),
+    path('member/login/',  MemberLoginView.as_view(),      name='member-login'),
+
+    # Members
+    path('members/',       MemberListCreateView.as_view(), name='member-list-create'),
     path('members/<int:pk>/', MemberDetailView.as_view(), name='member-detail'),
+
+    # QR
+    path('member/qr/',     MemberQRView.as_view(),         name='member-qr'),
+
+    # Attendance
+    path('attendance/scan/',  AttendanceScanView.as_view(),  name='attendance-scan'),
+    path('attendance/',       AttendanceListView.as_view(),  name='attendance-list'),
 ]
