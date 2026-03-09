@@ -1,5 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
+import '../services/auth_service.dart';
+import '../config/app_config.dart';
+import 'qr_screen.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -9,105 +14,181 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  // Dates with check-ins in January 2025
-  final Set<int> _checkedDays = {2, 3, 6, 8, 9, 10, 13, 15, 16, 17, 20, 22, 23, 24, 27};
+  List<Map<String, dynamic>> _records = [];
+  bool _loading = true;
+  String? _error;
+
+  // For calendar — days that have a check-in this month
+  Set<int> _checkedDaysThisMonth = {};
+  int _totalCheckins = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAttendance();
+  }
+
+  Future<void> _loadAttendance() async {
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final member = await AuthService.getMember();
+      if (member == null) return;
+
+      // We use the checkins count from saved member data
+      // and load attendance from a member-specific endpoint if available
+      // For now we calculate from the stored member data
+      setState(() {
+        _totalCheckins = member['checkins'] ?? 0;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = 'Failed to load attendance'; _loading = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final monthName = _monthName(now.month);
+
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBg,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Green header
-            Container(
-              width: double.infinity,
-              color: AppTheme.primaryGreen,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Attendance', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  // QR Scan Button
-                  InkWell(
-                    onTap: () => _showQRDialog(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white54),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
-                          SizedBox(width: 8),
-                          Text('Scan QR to Check-In', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                        ],
+      body: RefreshIndicator(
+        color: AppTheme.primaryGreen,
+        onRefresh: _loadAttendance,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              // ── Green Header ──────────────────────────────
+              Container(
+                width: double.infinity,
+                color: AppTheme.primaryGreen,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Attendance',
+                        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    // QR Button → opens QR screen
+                    InkWell(
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const QRScreen()),
+                        );
+                        _loadAttendance(); // refresh after returning
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white54),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.qr_code, color: Colors.white, size: 20),
+                            SizedBox(width: 8),
+                            Text('Show My QR Code',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+
+              // ── Stats ─────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(child: _AttendanceStat(
+                      value: _loading ? '—' : '$_totalCheckins',
+                      label: 'Total Check-ins',
+                    )),
+                    Expanded(child: _AttendanceStat(
+                      value: _loading ? '—' : '${_checkedDaysThisMonth.length}',
+                      label: 'This Month',
+                    )),
+                    Expanded(child: _AttendanceStat(
+                      value: _loading ? '—' : _attendanceRate(),
+                      label: 'Rate',
+                    )),
+                  ],
+                ),
+              ),
+
+              // ── Calendar ──────────────────────────────────
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.dividerColor),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$monthName ${now.year}',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: ['S','M','T','W','T','F','S']
+                          .map((d) => SizedBox(
+                                width: 36,
+                                child: Center(
+                                  child: Text(d,
+                                      style: const TextStyle(
+                                          fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textGrey)),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildCalendarGrid(now),
+                  ],
+                ),
+              ),
+
+              // ── Error ─────────────────────────────────────
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 13)),
                   ),
-                ],
-              ),
-            ),
-            // Stats
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(child: _AttendanceStat(value: '24', label: 'This Month')),
-                  Expanded(child: _AttendanceStat(value: '5', label: 'This Week')),
-                  Expanded(child: _AttendanceStat(value: '86%', label: 'Attendance')),
-                ],
-              ),
-            ),
-            // Calendar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.dividerColor),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('January 2025',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
-                  const SizedBox(height: 12),
-                  // Day headers
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-                        .map((d) => SizedBox(
-                              width: 36,
-                              child: Center(
-                                child: Text(d,
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textGrey)),
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  // Calendar grid - January 2025 starts on Wednesday (index 3)
-                  _buildCalendarGrid(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
+                ),
+
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildCalendarGrid() {
-    const startOffset = 3; // Wednesday
-    const daysInMonth = 31;
-    final cells = List<int?>.filled(startOffset, null) + List<int?>.generate(daysInMonth, (i) => i + 1);
-    // Pad to complete last row
+  Widget _buildCalendarGrid(DateTime now) {
+    final firstDay = DateTime(now.year, now.month, 1);
+    final startOffset = firstDay.weekday % 7; // Sunday = 0
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+
+    final cells = List<int?>.filled(startOffset, null) +
+        List<int?>.generate(daysInMonth, (i) => i + 1);
     while (cells.length % 7 != 0) { cells.add(null); }
 
     return Column(
@@ -119,26 +200,30 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             children: List.generate(7, (col) {
               final day = cells[row * 7 + col];
               if (day == null) return const SizedBox(width: 36, height: 36);
-              final isChecked = _checkedDays.contains(day);
+              final isChecked = _checkedDaysThisMonth.contains(day);
+              final isToday = day == now.day;
               return SizedBox(
-                width: 36,
-                height: 36,
+                width: 36, height: 36,
                 child: Center(
                   child: Container(
-                    width: 30,
-                    height: 30,
+                    width: 30, height: 30,
                     decoration: isChecked
                         ? BoxDecoration(
-                            color: AppTheme.lightGreen.withValues(alpha: 0.25),
+                            color: AppTheme.primaryGreen.withValues(alpha: 0.2),
                             shape: BoxShape.circle,
                           )
-                        : null,
+                        : isToday
+                            ? BoxDecoration(
+                                border: Border.all(color: AppTheme.primaryGreen),
+                                shape: BoxShape.circle,
+                              )
+                            : null,
                     child: Center(
                       child: Text(
                         '$day',
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: isChecked ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: isChecked || isToday ? FontWeight.w600 : FontWeight.normal,
                           color: isChecked ? AppTheme.primaryGreen : AppTheme.textDark,
                         ),
                       ),
@@ -153,18 +238,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  void _showQRDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('QR Check-In'),
-        content: const SizedBox(
-          height: 200,
-          child: Center(child: Icon(Icons.qr_code, size: 150, color: AppTheme.primaryGreen)),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-      ),
-    );
+  String _attendanceRate() {
+    final now = DateTime.now();
+    final daysSoFar = now.day;
+    if (daysSoFar == 0) return '0%';
+    final rate = (_checkedDaysThisMonth.length / daysSoFar * 100).round();
+    return '$rate%';
+  }
+
+  String _monthName(int month) {
+    const names = ['','January','February','March','April','May','June',
+        'July','August','September','October','November','December'];
+    return names[month];
   }
 }
 
