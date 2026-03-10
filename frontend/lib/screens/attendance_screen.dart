@@ -32,18 +32,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() { _loading = true; _error = null; });
 
     try {
-      final member = await AuthService.getMember();
-      if (member == null) return;
+      final token = await AuthService.getToken();
+      if (token == null) return;
 
-      // We use the checkins count from saved member data
-      // and load attendance from a member-specific endpoint if available
-      // For now we calculate from the stored member data
-      setState(() {
-        _totalCheckins = member['checkins'] ?? 0;
-        _loading = false;
-      });
+      final res = await http.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/member/attendance/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final dates = List<String>.from(data['dates'] ?? []);
+        final now = DateTime.now();
+
+        final thisMonthDays = dates
+            .map((d) => DateTime.parse(d))
+            .where((d) => d.year == now.year && d.month == now.month)
+            .map((d) => d.day)
+            .toSet();
+
+        setState(() {
+          _totalCheckins = data['total'] ?? 0;
+          _checkedDaysThisMonth = thisMonthDays;
+          _loading = false;
+        });
+      } else {
+        setState(() { _error = 'Failed to load attendance'; _loading = false; });
+      }
     } catch (e) {
-      setState(() { _error = 'Failed to load attendance'; _loading = false; });
+      setState(() { _error = 'Cannot connect to server'; _loading = false; });
     }
   }
 
