@@ -121,6 +121,24 @@ class MemberQRView(APIView):
         })
 
 
+class MemberAttendanceView(APIView):
+    """Return attendance records for the logged-in member (Flutter uses this)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            member = request.user.member
+        except Member.DoesNotExist:
+            return Response({'error': 'No member account found'}, status=status.HTTP_404_NOT_FOUND)
+
+        records = Attendance.objects.filter(member=member).order_by('-checked_in')[:90]
+        dates = [r.checked_in.strftime('%Y-%m-%d') for r in records]
+        return Response({
+            'total': records.count(),
+            'dates': dates,
+        })
+
+
 class AttendanceScanView(APIView):
     """Admin scans QR → verify → record attendance"""
     permission_classes = [IsAuthenticated, IsAdminUser]

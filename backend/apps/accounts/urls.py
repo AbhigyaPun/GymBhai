@@ -4,6 +4,7 @@ from .views import (
     MemberListCreateView, MemberDetailView,
     MemberQRView,
     AttendanceScanView, AttendanceListView,
+    MemberAttendanceView,
 )
 
 urlpatterns = [
@@ -16,7 +17,8 @@ urlpatterns = [
     path('members/<int:pk>/', MemberDetailView.as_view(), name='member-detail'),
 
     # QR
-    path('member/qr/',     MemberQRView.as_view(),         name='member-qr'),
+    path('member/qr/',          MemberQRView.as_view(),          name='member-qr'),
+    path('member/attendance/',  MemberAttendanceView.as_view(),  name='member-attendance'),
 
     # Attendance
     path('attendance/scan/',  AttendanceScanView.as_view(),  name='attendance-scan'),
