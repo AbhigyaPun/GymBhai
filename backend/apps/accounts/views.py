@@ -315,3 +315,32 @@ class AdminFeedbackDetailView(APIView):
         feedback.delete()
         return Response({'message': 'Deleted'},
                         status=status.HTTP_204_NO_CONTENT)
+    
+class MemberProfileView(APIView):
+    """Member views and updates their own profile"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            member = request.user.member
+        except Member.DoesNotExist:
+            return Response({'error': 'No member account'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(MemberSerializer(member).data)
+
+    def put(self, request):
+        try:
+            member = request.user.member
+        except Member.DoesNotExist:
+            return Response({'error': 'No member account'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = UpdateMemberSerializer(
+            data=request.data,
+            context={'member': member}
+        )
+        if serializer.is_valid():
+            member = serializer.update(member, serializer.validated_data)
+            # Update stored member data in response
+            return Response(MemberSerializer(member).data)
+        return Response(serializer.errors,
+                        status=status.HTTP_400_BAD_REQUEST)

@@ -76,20 +76,26 @@ class CreateMemberSerializer(serializers.Serializer):
 
 
 class UpdateMemberSerializer(serializers.Serializer):
-    first_name  = serializers.CharField(required=False)
-    last_name   = serializers.CharField(required=False, allow_blank=True)
-    email       = serializers.EmailField(required=False)
-    phone       = serializers.CharField(required=False, allow_blank=True)
-    password    = serializers.CharField(required=False, write_only=True, min_length=6)
-    goal        = serializers.ChoiceField(choices=['bulk', 'cut', 'maintain'], required=False)
-    membership  = serializers.ChoiceField(choices=['basic', 'standard', 'premium'], required=False)
-    status      = serializers.ChoiceField(choices=['active', 'frozen', 'expired'], required=False)
-    expiry_date = serializers.DateField(required=False, allow_null=True)
+    first_name   = serializers.CharField(required=False)
+    last_name    = serializers.CharField(required=False, allow_blank=True)
+    email        = serializers.EmailField(required=False)
+    phone        = serializers.CharField(required=False, allow_blank=True)
+    password     = serializers.CharField(required=False, write_only=True,
+                                         min_length=6)
+    goal         = serializers.ChoiceField(choices=['bulk', 'cut', 'maintain'],
+                                           required=False)
+    membership   = serializers.ChoiceField(
+                       choices=['basic', 'standard', 'premium'], required=False)
+    status       = serializers.ChoiceField(
+                       choices=['active', 'frozen', 'expired'], required=False)
+    expiry_date  = serializers.DateField(required=False, allow_null=True)
 
     def validate_email(self, value):
         member = self.context.get('member')
-        if User.objects.filter(email=value).exclude(pk=member.user.pk).exists():
-            raise serializers.ValidationError("A member with this email already exists.")
+        if User.objects.filter(email=value).exclude(
+                pk=member.user.pk).exists():
+            raise serializers.ValidationError(
+                'A member with this email already exists.')
         return value
 
     def update(self, instance, validated_data):
@@ -99,7 +105,6 @@ class UpdateMemberSerializer(serializers.Serializer):
         if 'email'       in validated_data: user.email      = validated_data['email']
         if 'password'    in validated_data: user.set_password(validated_data['password'])
         user.save()
-
         if 'phone'       in validated_data: instance.phone       = validated_data['phone']
         if 'goal'        in validated_data: instance.goal        = validated_data['goal']
         if 'membership'  in validated_data: instance.membership  = validated_data['membership']
