@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Member, Attendance
+from .models import Member, Attendance, Feedback
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -112,3 +112,26 @@ class UpdateMemberSerializer(serializers.Serializer):
 class AdminLoginSerializer(serializers.Serializer):
     email    = serializers.EmailField()
     password = serializers.CharField()
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    member_name = serializers.SerializerMethodField()
+    membership  = serializers.CharField(source='member.membership', read_only=True)
+
+    class Meta:
+        model  = Feedback
+        fields = ['id', 'member_name', 'membership', 'category',
+                  'message', 'rating', 'status', 'created_at']
+
+    def get_member_name(self, obj):
+        return obj.member.user.get_full_name() or obj.member.user.username
+
+
+class CreateFeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Feedback
+        fields = ['category', 'message', 'rating']
+
+    def validate_rating(self, value):
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError('Rating must be between 1 and 5')
+        return value

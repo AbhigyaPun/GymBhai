@@ -8,11 +8,12 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .models import Member, Attendance
+from .models import Member, Attendance, Feedback
 from .serializers import (
     MemberSerializer, CreateMemberSerializer,
     UpdateMemberSerializer, AdminLoginSerializer,
-    AttendanceSerializer,
+    AttendanceSerializer, FeedbackSerializer,
+    CreateFeedbackSerializer,
 )
 
 
@@ -247,3 +248,70 @@ class MemberDetailView(APIView):
             return Response({'error': 'Member not found'}, status=status.HTTP_404_NOT_FOUND)
         member.user.delete()
         return Response({'message': 'Member deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+
+class MemberFeedbackView(APIView):
+    """Member submits feedback"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            member = request.user.member
+        except Member.DoesNotExist:
+            return Response({'error': 'No member account'},
+                            status=status.HTTP_403_FORBIDDEN)
+        serializer = CreateFeedbackSerializer(data=request.data)
+        if serializer.is_valid():
+            feedback = Feedback.objects.create(
+                member=member, **serializer.validated_data)
+            return Response(FeedbackSerializer(feedback).data,
+                            status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        """Member sees their own feedback history"""
+        try:
+            member = request.user.member
+        except Member.DoesNotExist:
+            return Response({'error': 'No member account'},
+                            status=status.HTTP_403_FORBIDDEN)
+        feedbacks = Feedback.objects.filter(member=member)
+        return Response(FeedbackSerializer(feedbacks, many=True).data)
+
+
+class AdminFeedbackView(APIView):
+    """Admin sees and manages all feedback"""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get(self, request):
+        feedbacks = Feedback.objects.select_related(
+            'member__user').all()
+        return Response(FeedbackSerializer(feedbacks, many=True).data)
+
+
+class AdminFeedbackDetailView(APIView):
+    """Admin updates feedback status"""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            feedback = Feedback.objects.get(pk=pk)
+        except Feedback.DoesNotExist:
+            return Response({'error': 'Not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        new_status = request.data.get('status')
+        if new_status not in ['pending', 'reviewed', 'resolved']:
+            return Response({'error': 'Invalid status'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        feedback.status = new_status
+        feedback.save()
+        return Response(FeedbackSerializer(feedback).data)
+
+    def delete(self, request, pk):
+        try:
+            feedback = Feedback.objects.get(pk=pk)
+        except Feedback.DoesNotExist:
+            return Response({'error': 'Not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        feedback.delete()
+        return Response({'message': 'Deleted'},
+                        status=status.HTTP_204_NO_CONTENT)

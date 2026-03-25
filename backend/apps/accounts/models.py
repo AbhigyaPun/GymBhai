@@ -51,3 +51,35 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.member} — {self.checked_in.strftime('%Y-%m-%d %H:%M')}"
+
+class Feedback(models.Model):
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('equipment', 'Equipment'),
+        ('cleanliness', 'Cleanliness'),
+        ('staff', 'Staff'),
+        ('classes', 'Classes'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewed', 'Reviewed'),
+        ('resolved', 'Resolved'),
+    ]
+
+    member    = models.ForeignKey(Member, on_delete=models.CASCADE,
+                                  related_name='feedbacks')
+    category  = models.CharField(max_length=20, choices=CATEGORY_CHOICES,
+                                  default='general')
+    message   = models.TextField()
+    rating    = models.PositiveIntegerField(default=5)  # 1-5
+    status    = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                                  default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.member} - {self.category} - {self.status}"

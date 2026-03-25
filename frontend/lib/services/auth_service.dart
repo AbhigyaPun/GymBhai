@@ -17,7 +17,6 @@ class AuthService {
     final data = jsonDecode(response.body);
 
     if (response.statusCode == 200) {
-      // Save tokens
       await _storage.write(key: 'access_token', value: data['access']);
       await _storage.write(key: 'refresh_token', value: data['refresh']);
       await _storage.write(key: 'member', value: jsonEncode(data['member']));
@@ -32,9 +31,75 @@ class AuthService {
     await _storage.deleteAll();
   }
 
-  // Get saved token
+  // Get valid token — refreshes automatically if expired
   static Future<String?> getToken() async {
-    return await _storage.read(key: 'access_token');
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) return null;
+
+    // Check if token is expired
+    if (_isTokenExpired(token)) {
+      return await _refreshToken();
+    }
+
+    return token;
+  }
+
+  // Refresh the access token using refresh token
+  static Future<String?> _refreshToken() async {
+    try {
+      final refreshToken = await _storage.read(key: 'refresh_token');
+      if (refreshToken == null) return null;
+
+      final response = await http.post(
+        Uri.parse('${AppConfig.apiBaseUrl}/token/refresh/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh': refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final newToken = data['access'];
+        await _storage.write(key: 'access_token', value: newToken);
+        return newToken;
+      } else {
+        // Refresh token also expired — force logout
+        await logout();
+        return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Check if JWT token is expired
+  static bool _isTokenExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+
+      // Decode the payload (base64)
+      String payload = parts[1];
+      // Add padding if needed
+      switch (payload.length % 4) {
+        case 2: payload += '=='; break;
+        case 3: payload += '='; break;
+      }
+
+      final decoded = jsonDecode(
+        utf8.decode(base64Url.decode(payload))
+      );
+
+      final exp = decoded['exp'];
+      if (exp == null) return true;
+
+      final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      // Consider expired 1 minute before actual expiry
+      return DateTime.now().isAfter(
+        expiryDate.subtract(const Duration(minutes: 1))
+      );
+    } catch (e) {
+      return true;
+    }
   }
 
   // Get saved member data
@@ -47,6 +112,9 @@ class AuthService {
   // Check if logged in
   static Future<bool> isLoggedIn() async {
     final token = await _storage.read(key: 'access_token');
-    return token != null;
+    if (token == null) return false;
+    // Also check refresh token isn't expired
+    final refreshToken = await _storage.read(key: 'refresh_token');
+    return refreshToken != null;
   }
 }

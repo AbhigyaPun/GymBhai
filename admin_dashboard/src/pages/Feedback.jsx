@@ -1,39 +1,100 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import API_BASE_URL from '../config.js'
 
-const feedbacks = [
-  { id: 1, name: 'Rajesh Sharma', initials: 'RS', type: 'Premium', category: 'General', rating: 5, date: '2024-01-15', status: 'Reviewed', message: 'The new equipment is excellent! However, some of the older dumbbells need replacement.', color: 'bg-green-500' },
-  { id: 2, name: 'Sita Thapa', initials: 'ST', type: 'Standard', category: 'Staff', rating: 4, date: '2024-01-16', status: 'Reviewed', message: 'The trainers are very helpful and encouraging. Great experience!', color: 'bg-teal-500' },
-  { id: 3, name: 'Bikash Gurung', initials: 'BG', type: 'Premium', category: 'Equipment', rating: 3, date: '2024-01-17', status: 'Pending', message: 'The gym floor could be cleaned more frequently during peak hours.', color: 'bg-blue-500' },
-  { id: 4, name: 'Anjali Rai', initials: 'AR', type: 'Basic', category: 'Classes', rating: 5, date: '2024-01-18', status: 'Reviewed', message: 'Love the new workout programs! The variety is amazing.', color: 'bg-purple-500' },
-  { id: 5, name: 'Pramod Karki', initials: 'PK', type: 'Standard', category: 'General', rating: 4, date: '2024-01-19', status: 'Pending', message: 'Nutritional supplements are well-maintained. Please restock them regularly.', color: 'bg-orange-500' },
-  { id: 6, name: 'Maya Tamang', initials: 'MT', type: 'Premium', category: 'Cleanliness', rating: 4, date: '2024-01-20', status: 'Reviewed', message: 'Locker rooms are well maintained, thank you!', color: 'bg-pink-500' },
-  { id: 7, name: 'Suresh Shrestha', initials: 'SS', type: 'Standard', category: 'Staff', rating: 5, date: '2024-01-21', status: 'Reviewed', message: 'Former Titan dev is amazing! Very motivating and professional.', color: 'bg-indigo-500' },
-  { id: 8, name: 'Kopila Adhikari', initials: 'KA', type: 'Basic', category: 'General', rating: 3, date: '2024-01-22', status: 'Pending', message: 'Good gym overall. But there should be more yoga classes.', color: 'bg-yellow-500' },
-]
+const CATEGORIES = ['All', 'General', 'Equipment', 'Cleanliness', 'Staff', 'Classes', 'Other']
+const STATUSES   = ['All', 'Pending', 'Reviewed', 'Resolved']
 
-const categories = ['All', 'General', 'Equipment', 'Cleanliness', 'Staff', 'Classes', 'Other']
+const statusColor = (s) => {
+  const map = {
+    pending:  'bg-yellow-100 text-yellow-700',
+    reviewed: 'bg-green-100 text-green-700',
+    resolved: 'bg-blue-100 text-blue-700',
+  }
+  return map[s] || 'bg-gray-100 text-gray-600'
+}
+const membershipColor = (m) => {
+  const map = {
+    premium:  'bg-yellow-100 text-yellow-700',
+    standard: 'bg-blue-100 text-blue-700',
+    basic:    'bg-gray-100 text-gray-600',
+  }
+  return map[m] || 'bg-gray-100 text-gray-600'
+}
+const COLORS = ['bg-green-500','bg-blue-500','bg-purple-500',
+  'bg-orange-500','bg-pink-500','bg-teal-500']
+const avatarColor = (name) =>
+  COLORS[(name?.charCodeAt(0) ?? 0) % COLORS.length]
+const cap  = (s) => s ? s[0].toUpperCase() + s.slice(1) : ''
+const initials = (name) => {
+  if (!name) return '?'
+  const parts = name.split(' ')
+  return parts.length >= 2
+    ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+    : name[0].toUpperCase()
+}
 
 const Stars = ({ rating }) => (
   <div className="flex gap-0.5">
     {[1,2,3,4,5].map(i => (
-      <svg key={i} viewBox="0 0 24 24" className={`w-3.5 h-3.5 ${i <= rating ? 'fill-yellow-400' : 'fill-gray-200'}`}>
-        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+      <svg key={i} viewBox="0 0 24 24"
+        className={`w-3.5 h-3.5 ${i <= rating ? 'fill-yellow-400' : 'fill-gray-200'}`}>
+        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2
+          9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
       </svg>
     ))}
   </div>
 )
 
 export default function Feedback() {
+  const [feedbacks, setFeedbacks]       = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('All')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter]     = useState('All')
+
+  const token   = localStorage.getItem('admin_token')
+  const headers = { 'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}` }
+
+  useEffect(() => { fetchFeedbacks() }, [])
+
+  const fetchFeedbacks = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/feedback/`, { headers })
+      if (res.ok) setFeedbacks(await res.json())
+      else setError('Failed to load feedback')
+    } catch { setError('Cannot connect to server') }
+    finally { setLoading(false) }
+  }
+
+  const updateStatus = async (id, newStatus) => {
+    const res  = await fetch(`${API_BASE_URL}/admin/feedback/${id}/`, {
+      method: 'PATCH', headers,
+      body: JSON.stringify({ status: newStatus })
+    })
+    const data = await res.json()
+    if (res.ok)
+      setFeedbacks(feedbacks.map(f => f.id === id ? data : f))
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this feedback?')) return
+    await fetch(`${API_BASE_URL}/admin/feedback/${id}/`,
+      { method: 'DELETE', headers })
+    setFeedbacks(feedbacks.filter(f => f.id !== id))
+  }
 
   const filtered = feedbacks.filter(f => {
-    const matchCat = categoryFilter === 'All' || f.category === categoryFilter
-    const matchStatus = statusFilter === 'All' || f.status === statusFilter
-    return matchCat && matchStatus
+    const matchCat = categoryFilter === 'All' ||
+      f.category.toLowerCase() === categoryFilter.toLowerCase()
+    const matchSt  = statusFilter === 'All' ||
+      f.status.toLowerCase() === statusFilter.toLowerCase()
+    return matchCat && matchSt
   })
 
-  const avgRating = (feedbacks.reduce((a, b) => a + b.rating, 0) / feedbacks.length).toFixed(1)
+  const avgRating = feedbacks.length
+    ? (feedbacks.reduce((a, b) => a + b.rating, 0) / feedbacks.length).toFixed(1)
+    : '0.0'
 
   return (
     <div className="p-8">
@@ -44,46 +105,44 @@ export default function Feedback() {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">Total Feedback</p>
-          <p className="text-3xl font-bold text-gray-800">8</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">Avg. Rating</p>
-          <div className="flex items-center gap-2">
-            <p className="text-3xl font-bold text-yellow-500">{avgRating}</p>
-            <Stars rating={Math.round(avgRating)} />
+        {[
+          { label: 'Total Feedback', value: feedbacks.length, color: 'text-gray-800' },
+          { label: 'Avg Rating', value: avgRating, color: 'text-yellow-500' },
+          { label: 'Pending', value: feedbacks.filter(f => f.status === 'pending').length, color: 'text-yellow-500' },
+          { label: 'Resolved', value: feedbacks.filter(f => f.status === 'resolved').length, color: 'text-green-500' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-sm text-gray-500 mb-1">{s.label}</p>
+            <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
           </div>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">New Feedback</p>
-          <p className="text-3xl font-bold text-blue-500">2</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">Resolved</p>
-          <p className="text-3xl font-bold text-green-500">5</p>
-        </div>
+        ))}
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6 flex-wrap">
+      <div className="flex items-center gap-6 mb-6 flex-wrap">
         <div>
-          <p className="text-xs text-gray-400 mb-1">Filter by Category</p>
+          <p className="text-xs text-gray-400 mb-1">Category</p>
           <div className="flex gap-2 flex-wrap">
-            {categories.map(c => (
+            {CATEGORIES.map(c => (
               <button key={c} onClick={() => setCategoryFilter(c)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${categoryFilter === c ? 'bg-green-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition
+                  ${categoryFilter === c
+                    ? 'bg-green-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600'}`}>
                 {c}
               </button>
             ))}
           </div>
         </div>
         <div>
-          <p className="text-xs text-gray-400 mb-1">Filter by Status</p>
+          <p className="text-xs text-gray-400 mb-1">Status</p>
           <div className="flex gap-2">
-            {['All', 'Pending', 'Reviewed'].map(s => (
+            {STATUSES.map(s => (
               <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${statusFilter === s ? 'bg-green-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition
+                  ${statusFilter === s
+                    ? 'bg-green-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600'}`}>
                 {s}
               </button>
             ))}
@@ -91,41 +150,95 @@ export default function Feedback() {
         </div>
       </div>
 
-      {/* Feedback List */}
-      <div className="space-y-4">
-        {filtered.map((f) => (
-          <div key={f.id} className="bg-white rounded-2xl border border-gray-100 p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full ${f.color} flex items-center justify-center text-white text-sm font-bold`}>{f.initials}</div>
-                <div>
-                  <p className="font-semibold text-gray-800">{f.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-gray-400">{f.type}</span>
-                    <span className="text-xs text-gray-300">•</span>
-                    <span className="text-xs text-gray-400">{f.date}</span>
-                    <span className="text-xs text-gray-300">•</span>
-                    <span className="text-xs text-blue-500">{f.category}</span>
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl
+          text-red-600 text-sm">{error}</div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-4 border-green-500
+            border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100
+          p-16 text-center text-gray-400">
+          <p className="text-lg font-medium mb-2">No feedback yet</p>
+          <p className="text-sm">Member feedback will appear here</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map(f => (
+            <div key={f.id}
+              className="bg-white rounded-2xl border border-gray-100 p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full ${avatarColor(f.member_name)}
+                    flex items-center justify-center text-white text-sm font-bold`}>
+                    {initials(f.member_name)}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800">{f.member_name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5
+                        rounded-full ${membershipColor(f.membership)}`}>
+                        {cap(f.membership)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(f.created_at).toLocaleDateString('en-US',
+                          { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <span className="text-xs text-blue-500">{cap(f.category)}</span>
+                    </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-3">
+                  <Stars rating={f.rating} />
+                  <span className={`text-xs font-semibold px-2.5 py-1
+                    rounded-full ${statusColor(f.status)}`}>
+                    {cap(f.status)}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Stars rating={f.rating} />
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${f.status === 'Reviewed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                  {f.status}
-                </span>
+
+              <p className="text-sm text-gray-600 mb-3">{f.message}</p>
+
+              <div className="flex gap-2">
+                {f.status === 'pending' && (
+                  <button onClick={() => updateStatus(f.id, 'reviewed')}
+                    className="text-xs text-green-600 font-medium
+                      hover:text-green-700 border border-green-200
+                      px-3 py-1.5 rounded-lg transition">
+                    Mark Reviewed
+                  </button>
+                )}
+                {f.status === 'reviewed' && (
+                  <button onClick={() => updateStatus(f.id, 'resolved')}
+                    className="text-xs text-blue-600 font-medium
+                      hover:text-blue-700 border border-blue-200
+                      px-3 py-1.5 rounded-lg transition">
+                    Mark Resolved
+                  </button>
+                )}
+                {f.status === 'resolved' && (
+                  <button onClick={() => updateStatus(f.id, 'pending')}
+                    className="text-xs text-yellow-600 font-medium
+                      hover:text-yellow-700 border border-yellow-200
+                      px-3 py-1.5 rounded-lg transition">
+                    Reopen
+                  </button>
+                )}
+                <button onClick={() => handleDelete(f.id)}
+                  className="text-xs text-red-400 font-medium
+                    hover:text-red-600 border border-red-100
+                    px-3 py-1.5 rounded-lg transition">
+                  Delete
+                </button>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mb-3">{f.message}</p>
-            <div className="flex gap-2">
-              {f.status === 'Pending' && (
-                <button className="text-xs text-green-600 font-medium hover:text-green-700">Mark as Reviewed</button>
-              )}
-              <button className="text-xs text-gray-400 font-medium hover:text-gray-600">Resolved</button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
