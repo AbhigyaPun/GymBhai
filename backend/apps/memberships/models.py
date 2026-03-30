@@ -67,3 +67,71 @@ class FoodItem(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.quantity})"
+
+class GymSettings(models.Model):
+    """Single row — gym configuration"""
+    gym_name         = models.CharField(max_length=100,
+                                        default='Gym Bhai')
+    basic_price      = models.PositiveIntegerField(default=2800)
+    standard_price   = models.PositiveIntegerField(default=4800)
+    premium_price    = models.PositiveIntegerField(default=8500)
+    basic_duration   = models.PositiveIntegerField(default=1)
+    standard_duration = models.PositiveIntegerField(default=1)
+    premium_duration = models.PositiveIntegerField(default=1)
+    currency         = models.CharField(max_length=10, default='Rs')
+    updated_at       = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = 'Gym Settings'
+        verbose_name_plural = 'Gym Settings'
+
+    def __str__(self):
+        return self.gym_name
+
+    @classmethod
+    def get_settings(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class Payment(models.Model):
+    PLAN_CHOICES = [
+        ('basic', 'Basic'),
+        ('standard', 'Standard'),
+        ('premium', 'Premium'),
+    ]
+    DURATION_CHOICES = [
+        (1, '1 Month'),
+        (3, '3 Months'),
+        (6, '6 Months'),
+        (12, '12 Months'),
+    ]
+    METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('transfer', 'Bank Transfer'),
+        ('esewa', 'eSewa'),
+        ('khalti', 'Khalti'),
+        ('other', 'Other'),
+    ]
+
+    member         = models.ForeignKey('accounts.Member',
+                                        on_delete=models.CASCADE,
+                                        related_name='payments')
+    plan           = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    amount         = models.PositiveIntegerField()
+    duration_months = models.PositiveIntegerField(
+                          choices=DURATION_CHOICES, default=1)
+    payment_method = models.CharField(max_length=20,
+                                       choices=METHOD_CHOICES,
+                                       default='cash')
+    notes          = models.TextField(blank=True)
+    paid_at        = models.DateTimeField(auto_now_add=True)
+    recorded_by    = models.ForeignKey('auth.User',
+                                        on_delete=models.SET_NULL,
+                                        null=True)
+
+    class Meta:
+        ordering = ['-paid_at']
+
+    def __str__(self):
+        return f"{self.member} - Rs {self.amount} ({self.plan})"

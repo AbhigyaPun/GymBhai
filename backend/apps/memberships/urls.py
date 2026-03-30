@@ -4,18 +4,34 @@ from .views import (
     AdminMealPlanDetailView,
     MemberMealPlanListView,
     MemberMealPlanDetailView,
+    GymSettingsView,
+    PaymentListCreateView,
+    PaymentStatsView,
+    PaymentDeleteView,
 )
 
 urlpatterns = [
-    # Admin
+    # Meal plans - Admin
     path('admin/meal-plans/',
-         AdminMealPlanListCreateView.as_view(), name='admin-meal-plan-list'),
+         AdminMealPlanListCreateView.as_view()),
     path('admin/meal-plans/<int:pk>/',
-         AdminMealPlanDetailView.as_view(), name='admin-meal-plan-detail'),
+         AdminMealPlanDetailView.as_view()),
 
-    # Member (Flutter)
+    # Meal plans - Member
     path('meal-plans/',
-         MemberMealPlanListView.as_view(), name='member-meal-plan-list'),
+         MemberMealPlanListView.as_view()),
     path('meal-plans/<int:pk>/',
-         MemberMealPlanDetailView.as_view(), name='member-meal-plan-detail'),
+         MemberMealPlanDetailView.as_view()),
+
+    # Settings
+    path('settings/',
+         GymSettingsView.as_view(), name='gym-settings'),
+
+    # Payments
+    path('payments/',
+         PaymentListCreateView.as_view(), name='payments'),
+    path('payments/stats/',
+         PaymentStatsView.as_view(), name='payment-stats'),
+    path('payments/<int:pk>/',
+         PaymentDeleteView.as_view(), name='payment-delete'),
 ]
