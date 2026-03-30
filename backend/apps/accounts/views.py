@@ -344,3 +344,112 @@ class MemberProfileView(APIView):
             return Response(MemberSerializer(member).data)
         return Response(serializer.errors,
                         status=status.HTTP_400_BAD_REQUEST)
+    
+class AdminDashboardStatsView(APIView):
+    """Real stats for admin dashboard"""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.db.models import Count
+
+        now = timezone.now()
+        today = now.date()
+        month_start = now.replace(day=1, hour=0, minute=0,
+                                   second=0, microsecond=0)
+
+        # Member stats
+        total_members  = Member.objects.count()
+        active_members = Member.objects.filter(status='active').count()
+        new_this_month = Member.objects.filter(
+            member_since__gte=month_start.date()).count()
+
+        # Membership breakdown
+        basic_count    = Member.objects.filter(membership='basic').count()
+        standard_count = Member.objects.filter(membership='standard').count()
+        premium_count  = Member.objects.filter(membership='premium').count()
+
+        # Today's attendance
+        today_checkins = Attendance.objects.filter(
+            checked_in__date=today).count()
+
+        # Weekly attendance (last 7 days)
+        weekly = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            count = Attendance.objects.filter(
+                checked_in__date=day).count()
+            weekly.append({
+                'day': day.strftime('%a'),
+                'count': count,
+            })
+
+        # Expiring soon (next 7 days)
+        expiring = Member.objects.filter(
+            expiry_date__gte=today,
+            expiry_date__lte=today + timedelta(days=7),
+            status='active',
+        ).select_related('user').order_by('expiry_date')[:5]
+
+        expiring_data = [{
+            'id':          m.id,
+            'name':        m.user.get_full_name() or m.user.username,
+            'membership':  m.membership,
+            'expiry_date': str(m.expiry_date),
+        } for m in expiring]
+
+        # Recent activity (last 8 check-ins)
+        recent_checkins = Attendance.objects.select_related(
+            'member__user').all()[:8]
+        recent_data = [{
+            'name':       a.member.user.get_full_name() or
+                          a.member.user.username,
+            'membership': a.member.membership,
+            'checked_in': a.checked_in.isoformat(),
+        } for a in recent_checkins]
+
+        # Monthly revenue
+        try:
+            from apps.memberships.models import Payment
+            from django.db.models import Sum
+            monthly_revenue = Payment.objects.filter(
+                paid_at__gte=month_start
+            ).aggregate(total=Sum('amount'))['total'] or 0
+        except Exception:
+            monthly_revenue = 0
+
+        # Peak hour today
+        from django.db.models.functions import ExtractHour
+        peak = Attendance.objects.filter(
+            checked_in__date=today
+        ).annotate(
+            hour=ExtractHour('checked_in')
+        ).values('hour').annotate(
+            count=Count('id')
+        ).order_by('-count').first()
+
+        peak_hour = None
+        if peak:
+            h = peak['hour']
+            suffix = 'AM' if h < 12 else 'PM'
+            h12 = h if h <= 12 else h - 12
+            if h12 == 0: h12 = 12
+            peak_hour = f"{h12}{suffix}"
+
+        return Response({
+            'total_members':   total_members,
+            'active_members':  active_members,
+            'new_this_month':  new_this_month,
+            'today_checkins':  today_checkins,
+            'monthly_revenue': monthly_revenue,
+            'membership_breakdown': {
+                'basic':    basic_count,
+                'standard': standard_count,
+                'premium':  premium_count,
+            },
+            'weekly_attendance': weekly,
+            'expiring_soon':     expiring_data,
+            'recent_checkins':   recent_data,
+            'peak_hour':         peak_hour,
+        })
