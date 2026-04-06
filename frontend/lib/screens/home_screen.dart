@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,27 +23,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadMember() async {
-    final member = await AuthService.getMember();
-    if (mounted) setState(() { _member = member; _loading = false; });
+    try {
+      final token = await AuthService.getToken();
+      final res = await http.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/member/profile/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        await AuthService.updateMember(data);
+        if (mounted) setState(() { _member = data; _loading = false; });
+      } else {
+        final cached = await AuthService.getMember();
+        if (mounted) setState(() { _member = cached; _loading = false; });
+      }
+    } catch (e) {
+      final cached = await AuthService.getMember();
+      if (mounted) setState(() { _member = cached; _loading = false; });
+    }
   }
 
   String get _firstName {
     if (_member == null) return 'Member';
-    final first = _member!['first_name'] ?? '';
-    return first.isNotEmpty ? first : (_member!['username'] ?? 'Member');
+    final first = _member!['first_name']?.toString() ?? '';
+    return first.isNotEmpty ? first : (_member!['username']?.toString() ?? 'Member');
   }
 
+  // membership field is a plain string e.g. "standard", "basic", "premium"
   String get _membershipPlan {
-    final plan = _member?['membership'] ?? 'basic';
+    final plan = _member?['membership']?.toString() ?? 'basic';
     return plan[0].toUpperCase() + plan.substring(1);
   }
 
-  String get _status => _member?['status'] ?? 'active';
+  String get _status => _member?['status']?.toString() ?? 'active';
 
-  String get _expiryDate => _member?['expiry_date'] ?? '—';
+  // expiry_date is a top-level field in the profile response
+  String get _expiryDate {
+    final val = _member?['expiry_date'];
+    return val?.toString() ?? '—';
+  }
 
   String get _goal {
-    switch (_member?['goal']) {
+    switch (_member?['goal']?.toString()) {
       case 'bulk': return 'Muscle Building';
       case 'cut': return 'Weight Loss';
       case 'maintain': return 'Maintenance';
@@ -48,14 +72,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  int get _checkins => _member?['checkins'] ?? 0;
+  int get _checkins {
+    final val = _member?['checkins'];
+    if (val == null) return 0;
+    if (val is int) return val;
+    return int.tryParse(val.toString()) ?? 0;
+  }
 
   int get _daysUntilExpiry {
-    if (_expiryDate == '—') return -1;
+    final expiry = _expiryDate;
+    if (expiry == '—') return -1;
     try {
-      final expiry = DateTime.parse(_expiryDate);
-      return expiry.difference(DateTime.now()).inDays;
-    } catch (_) {
+      final expiryDate = DateTime.parse(expiry);
+      return expiryDate.difference(DateTime.now()).inDays;
+    } catch (e) {
       return -1;
     }
   }
@@ -155,9 +185,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(
                     child: _StatCard(
                       icon: Icons.calendar_today_outlined,
-                      value: days >= 0 ? '$days' : '—',
+                      value: days >= 0 ? '$days days' : days < 0 && _expiryDate != '—' ? 'Expired' : 'No expiry',
                       label: 'Days Until Expiry',
-                      iconColor: days >= 0 && days <= 7 ? Colors.red : Colors.orange,
+                      iconColor: days < 0 && _expiryDate != '—'
+                          ? Colors.red
+                          : days >= 0 && days <= 7
+                              ? Colors.red
+                              : days >= 0 && days <= 30
+                                  ? Colors.orange
+                                   : Colors.green,
                     ),
                   ),
                 ],
@@ -201,22 +237,29 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 10),
 
-              if (days >= 0 && days <= 7)
-                _NotificationCard(
-                  message: days == 0
-                      ? '⚠️ Your membership expires TODAY! Please renew.'
-                      : '⚠️ Membership expires in $days day${days == 1 ? '' : 's'}. Renew soon!',
-                  color: Colors.red.shade50,
-                  borderColor: Colors.red.shade200,
-                  textColor: Colors.red.shade800,
-                )
-              else if (days > 7 && days <= 30)
-                _NotificationCard(
-                  message: '📅 Your membership expires in $days days.',
-                  color: Colors.orange.shade50,
-                  borderColor: Colors.orange.shade200,
-                  textColor: Colors.orange.shade800,
-                ),
+              if (days < 0 && _expiryDate != '—')
+              _NotificationCard(
+                message: '❌ Your membership has expired! Please renew.',
+                color: Colors.red.shade50,
+                borderColor: Colors.red.shade200,
+                textColor: Colors.red.shade800,
+              )
+            else if (days >= 0 && days <= 7)
+              _NotificationCard(
+                message: days == 0
+                    ? '⚠️ Your membership expires TODAY! Please renew.'
+                    : '⚠️ Membership expires in $days day${days == 1 ? '' : 's'}. Renew soon!',
+                color: Colors.red.shade50,
+                borderColor: Colors.red.shade200,
+                textColor: Colors.red.shade800,
+              )
+            else if (days > 7 && days <= 30)
+              _NotificationCard(
+                message: '📅 Your membership expires in $days days.',
+                color: Colors.orange.shade50,
+                borderColor: Colors.orange.shade200,
+                textColor: Colors.orange.shade800,
+              ),
 
               const SizedBox(height: 8),
               _NotificationCard(
