@@ -21,7 +21,7 @@ const cap  = (s) => s ? s[0].toUpperCase() + s.slice(1) : ''
 const nice = (s) => s ? s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''
 
 const emptyFood = () => ({
-  name: '', quantity: '', calories: 0,
+  name: '', quantity: '100g', calories: 0, 
   protein: 0, carbs: 0, fat: 0, notes: ''
 })
 const emptyMeal = (name, order) => ({
@@ -134,6 +134,9 @@ export default function MealPlans() {
         if (!f.name.trim()) {
           setFormError('All food items must have a name'); return
         }
+        if (!f.quantity.toString().trim()) {
+          setFormError('All food items must have a quantity (e.g. 100g)'); return
+        }
       }
     }
     setSaving(true); setFormError('')
@@ -156,7 +159,14 @@ export default function MealPlans() {
         if (editPlan) setPlans(plans.map(p => p.id === editPlan.id ? data : p))
         else setPlans([data, ...plans])
         setShowModal(false)
-      } else setFormError(Object.values(data).flat().join(' '))
+      } else {
+        const messages = Object.entries(data).map(([key, val]) => {
+          if (Array.isArray(val)) return val.map(v => typeof v === 'object' ? JSON.stringify(v) : v).join(', ')
+          if (typeof val === 'object') return JSON.stringify(val)
+          return val
+        }).join(' | ')
+        setFormError(messages || 'Failed to save meal plan')
+      }
     } catch { setFormError('Cannot connect to server') }
     finally { setSaving(false) }
   }
