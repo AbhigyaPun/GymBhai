@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import API_BASE_URL from '../config'
-
+import jsQR from 'jsqr'
 export default function ScanQR() {
   const [activeTab, setActiveTab] = useState('scan')
   const [scanning, setScanning] = useState(false)
   const [manualId, setManualId] = useState('')
+  const [manualPhone, setManualPhone] = useState('')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -51,13 +52,14 @@ export default function ScanQR() {
         body: JSON.stringify({ qr_data: qrData })
       })
       const data = await res.json()
-      if (res.status === 201) {
+      if (res.ok) {
         setResult({ success: true, message: data.message, member: data.member, time: data.checked_in })
         fetchStats()
         stopCamera()
       } else {
         setError(data.error || 'Check-in failed')
         setResult({ success: false, member: data.member })
+        setStats(prev => ({ ...prev, denied: prev.denied + 1 }))
         stopCamera()
       }
     } catch (e) {
@@ -67,47 +69,83 @@ export default function ScanQR() {
     }
   }
 
-  const startCamera = async () => {
+  const handlePhoneCheckin = async (e) => {
+    e.preventDefault()
+    if (!manualPhone.trim()) return
+    setLoading(true)
     setResult(null)
     setError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      streamRef.current = stream
-      if (videoRef.current) videoRef.current.srcObject = stream
-      setScanning(true)
-
-      // Use BarcodeDetector API if available
-      if ('BarcodeDetector' in window) {
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-        intervalRef.current = setInterval(async () => {
-          if (videoRef.current && videoRef.current.readyState === 4) {
-            try {
-              const barcodes = await detector.detect(videoRef.current)
-              if (barcodes.length > 0) {
-                clearInterval(intervalRef.current)
-                await sendQRToBackend(barcodes[0].rawValue)
-              }
-            } catch (e) {}
-          }
-        }, 500)
+      const token = localStorage.getItem('admin_token')
+      const res = await fetch(`${API_BASE_URL}/attendance/manual/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ phone: manualPhone.trim() })
+      })
+      const data = await res.json()
+      if (res.status === 201) {
+        setResult({ success: true, message: data.message, member: data.member })
+        setManualPhone('')
+        fetchStats()
+      } else {
+        setError(data.error || 'Check-in failed')
+        setResult({ success: false, member: data.member })
+        setStats(prev => ({ ...prev, denied: prev.denied + 1 }))
       }
-    } catch (e) {
-      setError('Camera access denied. Please allow camera permission.')
+    } catch {
+      setError('Cannot connect to server')
+    } finally {
+      setLoading(false)
     }
   }
+
+const startCamera = async () => {
+  setResult(null)
+  setError(null)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'environment' } 
+    })
+    streamRef.current = stream
+    setScanning(true)
+
+    // Wait for React to render the video element
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
+    }
+
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+
+    intervalRef.current = setInterval(() => {
+      if (videoRef.current && videoRef.current.readyState === 4) {
+        canvas.width = videoRef.current.videoWidth
+        canvas.height = videoRef.current.videoHeight
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const code = jsQR(imageData.data, imageData.width, imageData.height)
+        if (code) {
+          clearInterval(intervalRef.current)
+          sendQRToBackend(code.data)
+        }
+      }
+    }, 300)
+  } catch (e) {
+    setError('Camera access denied. Please allow camera permission.')
+  }
+}
 
   const stopCamera = () => {
     if (intervalRef.current) clearInterval(intervalRef.current)
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
     streamRef.current = null
     setScanning(false)
-  }
-
-  const handleManualCheckin = async (e) => {
-    e.preventDefault()
-    if (!manualId.trim()) return
-    await sendQRToBackend(manualId.trim())
-    setManualId('')
   }
 
   const formatTime = (iso) => {
@@ -131,7 +169,7 @@ export default function ScanQR() {
         </button>
         <button onClick={() => { setActiveTab('manual'); setResult(null); setError(null); stopCamera() }}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition ${activeTab === 'manual' ? 'bg-green-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
-          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
           Manual Check In
         </button>
       </div>
@@ -157,7 +195,7 @@ export default function ScanQR() {
               </div>
               <button onClick={() => { setResult(null); setError(null) }}
                 className="mt-3 text-sm text-green-600 font-medium hover:text-green-700">
-                ← Scan another member
+                ← Check in another member
               </button>
             </div>
           )}
@@ -173,7 +211,7 @@ export default function ScanQR() {
                   <p className="font-bold text-red-700">Check-in Denied</p>
                   <p className="text-red-600 text-sm">{error}</p>
                   {result?.member && (
-                    <p className="text-red-500 text-xs mt-1">
+                    <p className="text-red-500 text.xs mt-1">
                       Member: {result.member.first_name} {result.member.last_name} · Status: {result.member.status}
                     </p>
                   )}
@@ -200,13 +238,12 @@ export default function ScanQR() {
                     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm-7 7H3v4h4v-2H5v-2zm14 0v2h-2v2h4v-4h-2zM5 5h2V3H3v4h2V5zm12-2v2h2v2h2V3h-4z"/></svg>
                     Start Camera
                   </button>
-                  <p className="text-xs text-gray-400 mt-3">Or switch to Manual Check In to enter QR data directly</p>
+                  <p className="text-xs text-gray-400 mt-3">Or switch to Manual Check In to use phone number</p>
                 </>
               ) : (
                 <div className="w-full">
                   <div className="relative bg-gray-900 rounded-xl overflow-hidden mb-4" style={{ height: '300px' }}>
                     <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                    {/* Scanner overlay */}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-52 h-52 relative">
                         <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
@@ -239,18 +276,37 @@ export default function ScanQR() {
           {activeTab === 'manual' && !result && (
             <div>
               <h3 className="font-semibold text-gray-800 mb-2">Manual Check-in</h3>
-              <p className="text-sm text-gray-400 mb-6">Paste the QR data string from the member's app</p>
-              <form onSubmit={handleManualCheckin} className="space-y-4">
+              <p className="text-sm text-gray-400 mb-6">Enter the member's registered phone number to check them in</p>
+              <form onSubmit={handlePhoneCheckin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">QR Data</label>
-                  <input value={manualId} onChange={e => setManualId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 font-mono"
-                    placeholder="GYMBHAI:1:abc123:signature..." />
-                  <p className="text-xs text-gray-400 mt-1">Format: GYMBHAI:member_id:qr_token:signature</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-gray-400"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                    </div>
+                    <input
+                      value={manualPhone}
+                      onChange={e => setManualPhone(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                      placeholder="e.g. 9823510522"
+                      type="tel"
+                      maxLength={15}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Enter the phone number registered with the member's account
+                  </p>
                 </div>
-                <button type="submit" disabled={loading}
+                <button
+                  type="submit"
+                  disabled={loading || !manualPhone.trim()}
                   className="flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition">
-                  {loading ? 'Checking in...' : 'Check In Member'}
+                  {loading
+                    ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Checking in...</>
+                    : <><svg viewBox="0 0 24 24" className="w-4 h-4 fill-white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Check In Member</>
+                  }
                 </button>
               </form>
             </div>
@@ -275,7 +331,6 @@ export default function ScanQR() {
             <p className="text-xs text-gray-400 mt-1">Expired/frozen</p>
           </div>
 
-          {/* Recent scans */}
           {recentScans.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <p className="text-sm font-semibold text-gray-700 mb-3">Recent Check-ins</p>
