@@ -1,15 +1,19 @@
 from django.urls import path
 from .views import (
-    AdminLoginView, MemberLoginView,
-    MemberListCreateView, MemberDetailView,
+    AdminLoginView,
+    MemberLoginView,
     MemberQRView,
-    AttendanceScanView, AttendanceListView,
     MemberAttendanceView,
+    AttendanceScanView,
+    AttendanceListView,
+    MemberListCreateView,
+    MemberDetailView,
     MemberFeedbackView,
     AdminFeedbackView,
     AdminFeedbackDetailView,
     MemberProfileView,
-    AdminDashboardStatsView,  
+    AdminDashboardStatsView,
+    ManualAttendanceView,
 )
 
 urlpatterns = [
@@ -39,4 +43,6 @@ urlpatterns = [
 
     # Dashboard
     path('dashboard/stats/', AdminDashboardStatsView.as_view()),  
+
+    path('attendance/manual/', ManualAttendanceView.as_view(), name='manual-attendance'),
 ]
