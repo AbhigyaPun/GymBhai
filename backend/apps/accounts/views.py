@@ -15,6 +15,9 @@ from .serializers import (
     AttendanceSerializer, FeedbackSerializer,
     CreateFeedbackSerializer,
 )
+from datetime import date
+from django.utils import timezone
+
 
 
 def _make_signature(member_id: int, qr_token: str) -> str:
@@ -103,23 +106,18 @@ class MemberLoginView(APIView):
 
 
 class MemberQRView(APIView):
-    """Return QR payload for the logged-in member (Flutter uses this)"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            member = request.user.member
-        except Member.DoesNotExist:
-            return Response({'error': 'No member account found'}, status=status.HTTP_404_NOT_FOUND)
-
-        signature = _make_signature(member.id, member.qr_token)
-        qr_data   = f"GYMBHAI:{member.id}:{member.qr_token}:{signature}"
-
-        return Response({
-            'qr_data':   qr_data,
-            'member_id': member.id,
-            'name':      request.user.get_full_name() or request.user.username,
-        })
+        member = request.user.member
+        payload = f"GYMBHAI:{member.id}:{member.qr_token}:{member.phone}"
+        signature = hmac.new(
+            settings.SECRET_KEY.encode(),
+            payload.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        qr_data = f"{payload}:{signature}"
+        return Response({'qr_data': qr_data})
 
 
 class MemberAttendanceView(APIView):
@@ -141,55 +139,66 @@ class MemberAttendanceView(APIView):
 
 
 class AttendanceScanView(APIView):
-    """Admin scans QR → verify → record attendance"""
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
-        qr_data = request.data.get('qr_data', '').strip()
+        qr_data = request.data.get('qr_data', '')
+        parts = qr_data.split(':')
+        
+        # Now expects: GYMBHAI:member_id:qr_token:phone:signature
+        if len(parts) != 5 or parts[0] != 'GYMBHAI':
+            return Response({'error': 'Invalid QR code'}, status=400)
 
-        # ── Parse QR string ──────────────────────────────
+        _, member_id, qr_token, phone, signature = parts
+
         try:
-            prefix, member_id_str, qr_token, received_sig = qr_data.split(':')
-            if prefix != 'GYMBHAI':
-                raise ValueError
-            member_id = int(member_id_str)
-        except (ValueError, AttributeError):
-            return Response({'error': 'Invalid QR code format'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # ── Verify signature ─────────────────────────────
-        expected_sig = _make_signature(member_id, qr_token)
-        if not hmac.compare_digest(expected_sig, received_sig):
-            return Response({'error': 'QR code signature is invalid'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # ── Get member ───────────────────────────────────
-        try:
-            member = Member.objects.select_related('user').get(id=member_id, qr_token=qr_token)
+            member = Member.objects.get(id=member_id)
         except Member.DoesNotExist:
-            return Response({'error': 'Member not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Member not found'}, status=404)
 
-        # ── Membership rules ─────────────────────────────
+        # Verify phone matches
+        if member.phone != phone:
+            return Response({'error': 'Invalid QR code'}, status=400)
+
+        # Verify signature
+        payload = f"GYMBHAI:{member_id}:{qr_token}:{phone}"
+        expected = hmac.new(
+            settings.SECRET_KEY.encode(),
+            payload.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, expected):
+            return Response({'error': 'Invalid QR signature'}, status=400)
+
+        if member.qr_token != qr_token:
+            return Response({'error': 'QR token mismatch'}, status=400)
+
+        # Check membership validity
+        if member.expiry_date and member.expiry_date < date.today():
+            member.status = 'expired'
+            member.save()
+            return Response({'error': 'Membership has expired. Please renew.'}, status=403)
+
         if member.status == 'expired':
-            return Response({
-                'error':  'Membership expired',
-                'member': MemberSerializer(member).data,
-            }, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Membership has expired. Please renew.'}, status=403)
 
         if member.status == 'frozen':
-            return Response({
-                'error':  'Membership is frozen',
-                'member': MemberSerializer(member).data,
-            }, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Membership is frozen. Contact admin.'}, status=403)
 
-        # ── Record attendance ────────────────────────────
-        attendance = Attendance.objects.create(member=member)
+        # Record attendance
+        today = date.today()
+        attendance, created = Attendance.objects.get_or_create(
+            member=member,
+            checked_in__date=today,
+            defaults={'checked_in': timezone.now()}
+        )
+        if not created:
+            return Response({'message': 'Already checked in today',
+                           'member': member.user.get_full_name()})
 
-        return Response({
-            'success':    True,
-            'message':    f"Welcome, {member.user.get_full_name() or member.user.username}!",
-            'member':     MemberSerializer(member).data,
-            'checked_in': attendance.checked_in,
-        }, status=status.HTTP_201_CREATED)
-
+        return Response({'message': 'Check-in successful',
+                'member': member.user.get_full_name()}, status=201)
 
 class AttendanceListView(APIView):
     """List all attendance records (admin only)"""
@@ -453,3 +462,42 @@ class AdminDashboardStatsView(APIView):
             'recent_checkins':   recent_data,
             'peak_hour':         peak_hour,
         })
+    
+class ManualAttendanceView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        phone = request.data.get('phone', '').strip()
+        if not phone:
+            return Response({'error': 'Phone number is required'}, status=400)
+
+        try:
+            member = Member.objects.get(phone=phone)
+        except Member.DoesNotExist:
+            return Response({'error': 'No member found with this phone number'}, status=404)
+
+        # Check membership validity
+        if member.expiry_date and member.expiry_date < date.today():
+            member.status = 'expired'
+            member.save()
+            return Response({'error': 'Membership has expired. Please renew.'}, status=403)
+
+        if member.status == 'expired':
+            return Response({'error': 'Membership has expired. Please renew.'}, status=403)
+
+        if member.status == 'frozen':
+            return Response({'error': 'Membership is frozen. Contact admin.'}, status=403)
+
+        # Record attendance
+        today = date.today()
+        attendance, created = Attendance.objects.get_or_create(
+            member=member,
+            checked_in__date=today,
+            defaults={'checked_in': timezone.now()}
+        )
+        if not created:
+            return Response({'message': 'Already checked in today',
+                           'member': member.user.get_full_name()})
+
+        return Response({'message': 'Check-in successful',
+                'member': member.user.get_full_name()}, status=201)
