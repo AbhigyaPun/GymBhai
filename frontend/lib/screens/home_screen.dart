@@ -14,12 +14,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _member;
+  Map<String, dynamic>? _busyStatus;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _loadMember();
+    _loadBusyStatus();
   }
 
   Future<void> _loadMember() async {
@@ -43,13 +45,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadBusyStatus() async {
+    try {
+      final token = await AuthService.getToken();
+      final res = await http.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/gym/busy-status/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (mounted) setState(() { _busyStatus = data; });
+      }
+    } catch (e) {
+      debugPrint('busy status error: $e');
+    }
+  }
+
   String get _firstName {
     if (_member == null) return 'Member';
     final first = _member!['first_name']?.toString() ?? '';
     return first.isNotEmpty ? first : (_member!['username']?.toString() ?? 'Member');
   }
 
-  // membership field is a plain string e.g. "standard", "basic", "premium"
   String get _membershipPlan {
     final plan = _member?['membership']?.toString() ?? 'basic';
     return plan[0].toUpperCase() + plan.substring(1);
@@ -57,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String get _status => _member?['status']?.toString() ?? 'active';
 
-  // expiry_date is a top-level field in the profile response
   String get _expiryDate {
     final val = _member?['expiry_date'];
     return val?.toString() ?? '—';
@@ -99,6 +115,38 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Color _busyColor(String status) {
+    switch (status) {
+      case 'busy': return Colors.red.shade400;
+      case 'moderate': return Colors.orange.shade400;
+      default: return Colors.green.shade400;
+    }
+  }
+
+  Color _busyBgColor(String status) {
+    switch (status) {
+      case 'busy': return Colors.red.shade50;
+      case 'moderate': return Colors.orange.shade50;
+      default: return Colors.green.shade50;
+    }
+  }
+
+  Color _busyBorderColor(String status) {
+    switch (status) {
+      case 'busy': return Colors.red.shade200;
+      case 'moderate': return Colors.orange.shade200;
+      default: return Colors.green.shade200;
+    }
+  }
+
+  Color _busyTextColor(String status) {
+    switch (status) {
+      case 'busy': return Colors.red.shade700;
+      case 'moderate': return Colors.orange.shade700;
+      default: return Colors.green.shade700;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -114,7 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppTheme.scaffoldBg,
       body: RefreshIndicator(
         color: AppTheme.primaryGreen,
-        onRefresh: _loadMember,
+        onRefresh: () async {
+          await _loadMember();
+          await _loadBusyStatus();
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -193,12 +244,76 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? Colors.red
                               : days >= 0 && days <= 30
                                   ? Colors.orange
-                                   : Colors.green,
+                                  : Colors.green,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
+
+              // Gym Busy Status
+              if (_busyStatus != null) ...[
+                const Text('Gym Status',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _busyBgColor(_busyStatus!['status'] ?? 'quiet'),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _busyBorderColor(_busyStatus!['status'] ?? 'quiet'),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: _busyColor(_busyStatus!['status'] ?? 'quiet').withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            _busyStatus!['status'] == 'busy'
+                                ? Icons.people
+                                : _busyStatus!['status'] == 'moderate'
+                                    ? Icons.people_outline
+                                    : Icons.person_outline,
+                            color: _busyColor(_busyStatus!['status'] ?? 'quiet'),
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _busyStatus!['label'] ?? 'Gym is Quiet',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _busyTextColor(_busyStatus!['status'] ?? 'quiet'),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_busyStatus!['count']} check-in${_busyStatus!['count'] == 1 ? '' : 's'} this hour',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _busyTextColor(_busyStatus!['status'] ?? 'quiet').withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // Membership Info
               const Text('Membership Details',
@@ -238,28 +353,28 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 10),
 
               if (days < 0 && _expiryDate != '—')
-              _NotificationCard(
-                message: '❌ Your membership has expired! Please renew.',
-                color: Colors.red.shade50,
-                borderColor: Colors.red.shade200,
-                textColor: Colors.red.shade800,
-              )
-            else if (days >= 0 && days <= 7)
-              _NotificationCard(
-                message: days == 0
-                    ? '⚠️ Your membership expires TODAY! Please renew.'
-                    : '⚠️ Membership expires in $days day${days == 1 ? '' : 's'}. Renew soon!',
-                color: Colors.red.shade50,
-                borderColor: Colors.red.shade200,
-                textColor: Colors.red.shade800,
-              )
-            else if (days > 7 && days <= 30)
-              _NotificationCard(
-                message: '📅 Your membership expires in $days days.',
-                color: Colors.orange.shade50,
-                borderColor: Colors.orange.shade200,
-                textColor: Colors.orange.shade800,
-              ),
+                _NotificationCard(
+                  message: '❌ Your membership has expired! Please renew.',
+                  color: Colors.red.shade50,
+                  borderColor: Colors.red.shade200,
+                  textColor: Colors.red.shade800,
+                )
+              else if (days >= 0 && days <= 7)
+                _NotificationCard(
+                  message: days == 0
+                      ? '⚠️ Your membership expires TODAY! Please renew.'
+                      : '⚠️ Membership expires in $days day${days == 1 ? '' : 's'}. Renew soon!',
+                  color: Colors.red.shade50,
+                  borderColor: Colors.red.shade200,
+                  textColor: Colors.red.shade800,
+                )
+              else if (days > 7 && days <= 30)
+                _NotificationCard(
+                  message: '📅 Your membership expires in $days days.',
+                  color: Colors.orange.shade50,
+                  borderColor: Colors.orange.shade200,
+                  textColor: Colors.orange.shade800,
+                ),
 
               const SizedBox(height: 8),
               _NotificationCard(
