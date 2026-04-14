@@ -58,14 +58,15 @@ export default function Attendance() {
   })()
 
   const hourlyData = (() => {
-    const hours = ['6AM','7AM','8AM','9AM','10AM','11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM']
-    const counts = Array(16).fill(0)
+    const counts = Array(24).fill(0)
     todayRecords.forEach(r => {
       const h = new Date(r.checked_in).getHours()
-      const idx = h - 6
-      if (idx >= 0 && idx < 16) counts[idx]++
+      counts[h]++
     })
-    return hours.map((time, i) => ({ time, count: counts[i] }))
+    return counts.map((count, h) => ({
+      time: h === 0 ? '12AM' : h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`,
+      count
+    }))
   })()
 
   const peakHour = (() => {
@@ -150,7 +151,14 @@ export default function Attendance() {
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={hourlyData}>
               <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} interval={1} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 11, fill: '#9ca3af' }} 
+                domain={[0, 10]}
+                tickCount={6}
+                allowDecimals={false}
+              />
               <Tooltip />
               <Line type="monotone" dataKey="count" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e', r: 3 }} />
             </LineChart>
