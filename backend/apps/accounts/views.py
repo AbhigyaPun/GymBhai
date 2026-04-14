@@ -501,3 +501,89 @@ class ManualAttendanceView(APIView):
 
         return Response({'message': 'Check-in successful',
                 'member': member.user.get_full_name()}, status=201)
+    
+class GymBusyStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+        now = timezone.localtime()
+        current_hour = now.hour
+
+        # Count check-ins in the current hour
+        current_count = Attendance.objects.filter(
+            checked_in__date=now.date(),
+            checked_in__hour=current_hour
+        ).count()
+
+        # Determine status
+        if current_count == 0:
+            status = 'quiet'
+            label = 'Gym is Quiet'
+            emoji = '🟢'
+        elif current_count <= 10:
+            status = 'moderate'
+            label = 'Gym is Moderately Busy'
+            emoji = '🟡'
+        else:
+            status = 'busy'
+            label = 'Gym is Very Busy'
+            emoji = '🔴'
+
+        return Response({
+            'status': status,
+            'label': label,
+            'emoji': emoji,
+            'count': current_count,
+            'hour': current_hour
+        })
+    
+class SendExpiryRemindersView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        from django.core.mail import send_mail
+        from django.conf import settings
+        today = timezone.now().date()
+        reminder_date = today + timezone.timedelta(days=7)
+
+        members = Member.objects.filter(
+            expiry_date__lte=reminder_date,
+            expiry_date__gte=today,
+            status='active'
+        )
+
+        sent = 0
+        failed = 0
+        for member in members:
+            days_left = (member.expiry_date - today).days
+            try:
+                send_mail(
+                    subject=f'⚠️ GymBhai — Membership Expiring in {days_left} Days',
+                    message=f'''Hi {member.user.first_name},
+
+Your GymBhai membership is expiring in {days_left} day{'s' if days_left != 1 else ''} on {member.expiry_date}.
+
+Please renew your membership to continue enjoying our facilities.
+
+Plan: {member.membership.capitalize()}
+Expiry Date: {member.expiry_date}
+
+Contact your gym admin to renew.
+
+— GymBhai Team''',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[member.user.email],
+                    fail_silently=False,
+                )
+                sent += 1
+            except Exception as e:
+                print(f'Failed to send to {member.user.email}: {e}')
+                failed += 1
+
+        return Response({
+            'message': f'Reminders sent successfully',
+            'sent': sent,
+            'failed': failed,
+            'total_expiring': members.count()
+        })
