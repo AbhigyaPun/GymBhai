@@ -14,6 +14,8 @@ from .views import (
     MemberProfileView,
     AdminDashboardStatsView,
     ManualAttendanceView,
+    GymBusyStatusView,
+    SendExpiryRemindersView,
 )
 
 urlpatterns = [
@@ -45,4 +47,8 @@ urlpatterns = [
     path('dashboard/stats/', AdminDashboardStatsView.as_view()),  
 
     path('attendance/manual/', ManualAttendanceView.as_view(), name='manual-attendance'),
+
+    path('gym/busy-status/', GymBusyStatusView.as_view(), name='gym-busy-status'),
+
+    path('admin/send-reminders/', SendExpiryRemindersView.as_view(), name='send-reminders'),
 ]
