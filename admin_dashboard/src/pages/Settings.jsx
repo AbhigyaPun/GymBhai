@@ -7,6 +7,8 @@ export default function Settings() {
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
   const [error, setError]     = useState(null)
+  const [sending, setSending] = useState(false)
+  const [reminderResult, setReminderResult] = useState(null)
 
   const token   = localStorage.getItem('admin_token')
   const headers = { 'Content-Type': 'application/json',
@@ -40,6 +42,27 @@ export default function Settings() {
       }
     } catch { setError('Cannot connect to server') }
     finally { setSaving(false) }
+  }
+
+  const handleSendReminders = async () => {
+    setSending(true)
+    setReminderResult(null)
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/send-reminders/`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setReminderResult({ success: true, ...data })
+      } else {
+        setReminderResult({ success: false, message: 'Failed to send reminders' })
+      }
+    } catch {
+      setReminderResult({ success: false, message: 'Cannot connect to server' })
+    } finally {
+      setSending(false)
+    }
   }
 
   if (loading) return (
@@ -139,6 +162,38 @@ export default function Settings() {
             </div>
           ))}
         </div>
+      </Section>
+
+      {/* Email Reminders */}
+      <Section title="Membership Expiry Reminders">
+        <p className="text-sm text-gray-400 mb-4">
+          Send email reminders to all active members whose membership expires within 7 days.
+        </p>
+        {reminderResult && (
+          <div className={`mb-4 p-4 rounded-xl text-sm ${
+            reminderResult.success
+              ? 'bg-green-50 border border-green-200 text-green-700'
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
+            {reminderResult.success
+              ? reminderResult.total_expiring === 0
+                ? '✓ No members expiring within 7 days. No emails sent.'
+                : `✓ Sent ${reminderResult.sent} reminder${reminderResult.sent !== 1 ? 's' : ''} successfully.${reminderResult.failed > 0 ? ` ${reminderResult.failed} failed.` : ''}`
+              : `❌ ${reminderResult.message}`
+            }
+          </div>
+        )}
+        <button
+          onClick={handleSendReminders}
+          disabled={sending}
+          className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600
+            disabled:opacity-50 text-white px-5 py-2.5 rounded-xl
+            text-sm font-semibold transition">
+          {sending
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Sending...</>
+            : <>📧 Send Expiry Reminders</>
+          }
+        </button>
       </Section>
 
       {error && (
