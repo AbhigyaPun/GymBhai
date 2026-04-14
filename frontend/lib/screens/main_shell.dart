@@ -15,14 +15,8 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    AttendanceScreen(),
-    WorkoutScreen(),
-    ProgressScreen(),
-    MealsScreen(),
-  ];
+  int _progressKey = 0;
+  int _homeKey = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -36,11 +30,21 @@ class _MainShellState extends State<MainShell> {
       ),
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          HomeScreen(key: ValueKey(_homeKey)),
+          const AttendanceScreen(),
+          const WorkoutScreen(),
+          ProgressScreen(key: ValueKey(_progressKey)),
+          const MealsScreen(),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: (i) => setState(() {
+          if (i == 3) _progressKey++;
+          if (i == 0) _homeKey++;
+          _currentIndex = i;
+        }),
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
