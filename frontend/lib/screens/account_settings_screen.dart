@@ -103,14 +103,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       final data = jsonDecode(res.body);
       if (res.statusCode == 200) {
         // Update stored member data
-        final member = await AuthService.getMember();
-        if (member != null) {
-          member['first_name'] = data['first_name'];
-          member['last_name']  = data['last_name'];
-          member['email']      = data['email'];
-          member['phone']      = data['phone'];
-          member['goal']       = data['goal'];
-        }
+        await AuthService.updateMember(data);
         setState(() { _success = 'Profile updated successfully!'; });
       } else {
         setState(() {
