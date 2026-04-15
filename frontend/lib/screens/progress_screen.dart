@@ -582,14 +582,32 @@ class _ProgressScreenState extends State<ProgressScreen> {
     );
   }
 
-  Future<void> _deleteLog(int id) async {
-    final token = await AuthService.getToken();
-    await http.delete(
-      Uri.parse('${AppConfig.apiBaseUrl}/progress/logs/$id/'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    _loadData();
-  }
+Future<void> _deleteLog(int id) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete Weight Log'),
+      content: const Text('Are you sure you want to delete this weight log?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Delete', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );
+  if (confirm != true) return;
+  final token = await AuthService.getToken();
+  await http.delete(
+    Uri.parse('${AppConfig.apiBaseUrl}/progress/logs/$id/'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  _loadData();
+}
 }
 
 class _StatCard extends StatelessWidget {
