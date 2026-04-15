@@ -189,7 +189,11 @@ class _WorkoutScreenState extends State<WorkoutScreen>
                               padding: const EdgeInsets.all(16),
                               itemCount: _logs.length,
                               itemBuilder: (context, i) =>
-                                  _LogCard(log: _logs[i], cap: _cap),
+                                  _LogCard(
+                                    log: _logs[i],
+                                    cap: _cap,
+                                    onDeleted: _loadLogs,
+                                  ),
                             ),
                           ),
               ],
@@ -685,7 +689,8 @@ class _SplitCardState extends State<_SplitCard> {
 class _LogCard extends StatefulWidget {
   final dynamic log;
   final String Function(String) cap;
-  const _LogCard({required this.log, required this.cap});
+  final VoidCallback onDeleted;
+  const _LogCard({required this.log, required this.cap, required this.onDeleted});
 
   @override
   State<_LogCard> createState() => _LogCardState();
@@ -727,42 +732,83 @@ class _LogCardState extends State<_LogCard> {
               style: const TextStyle(fontSize: 11,
                   color: AppTheme.textGrey),
             ),
-            trailing: GestureDetector(
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Icon(
-                _expanded ? Icons.keyboard_arrow_up
-                           : Icons.keyboard_arrow_down,
-                color: AppTheme.textGrey,
-              ),
-            ),
-          ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Delete Workout Log'),
+                        content: const Text('Are you sure you want to delete this workout log?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    try {
+                      final token = await AuthService.getToken();
+                      await http.delete(
+                        Uri.parse('${AppConfig.apiBaseUrl}/workouts/logs/${widget.log['id']}/'),
+                        headers: {'Authorization': 'Bearer $token'},
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Workout log deleted'),
+                          backgroundColor: Colors.red,
+                        ));
+                        widget.onDeleted();
+                      }
+                    } catch (_) {}
+                  },
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Icon(
+                    _expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: AppTheme.textGrey,
+                  ),
+                ),
+              ],
+            ),         
+          ),            
           if (_expanded && exLogs.isNotEmpty) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-              child: Column(
-                children: [
-                  // Header
-                  const Row(children: [
-                    Expanded(flex: 3,
-                        child: Text('Exercise',
-                            style: TextStyle(fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textGrey))),
-                    Expanded(child: Text('Sets',
-                        style: TextStyle(fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textGrey))),
-                    Expanded(child: Text('Reps',
-                        style: TextStyle(fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textGrey))),
-                    Expanded(flex: 2,
-                        child: Text('Weight',
-                            style: TextStyle(fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textGrey))),
-                  ]),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                child: Column(
+                  children: [
+                    // Header
+                    const Row(children: [
+                      Expanded(flex: 3,
+                          child: Text('Exercise',
+                              style: TextStyle(fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textGrey))),
+                      Expanded(child: Text('Sets',
+                          style: TextStyle(fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textGrey))),
+                      Expanded(child: Text('Reps',
+                          style: TextStyle(fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textGrey))),
+                      Expanded(flex: 2,
+                          child: Text('Weight',
+                              style: TextStyle(fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textGrey))),
+                    ]),
                   const Divider(height: 10),
                   ...exLogs.map((el) => Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
