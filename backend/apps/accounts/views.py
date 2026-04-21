@@ -188,15 +188,17 @@ class AttendanceScanView(APIView):
 
         # Record attendance
         today = date.today()
-        attendance, created = Attendance.objects.get_or_create(
-            member=member,
-            checked_in__date=today,
-            defaults={'checked_in': timezone.now()}
-        )
-        if not created:
-            return Response({'message': 'Already checked in today',
-                           'member': member.user.get_full_name()})
 
+        already_checked = Attendance.objects.filter(
+            member=member,
+            checked_in__date=today
+        ).exists()
+
+        if already_checked:
+            return Response({'message': 'Already checked in today',
+                        'member': member.user.get_full_name()})
+
+        attendance = Attendance.objects.create(member=member)
         return Response({'message': 'Check-in successful',
                 'member': member.user.get_full_name()}, status=201)
 
@@ -490,15 +492,17 @@ class ManualAttendanceView(APIView):
 
         # Record attendance
         today = date.today()
-        attendance, created = Attendance.objects.get_or_create(
-            member=member,
-            checked_in__date=today,
-            defaults={'checked_in': timezone.now()}
-        )
-        if not created:
-            return Response({'message': 'Already checked in today',
-                           'member': member.user.get_full_name()})
 
+        already_checked = Attendance.objects.filter(
+            member=member,
+            checked_in__date=today
+        ).exists()
+
+        if already_checked:
+            return Response({'message': 'Already checked in today',
+                        'member': member.user.get_full_name()})
+
+        attendance = Attendance.objects.create(member=member)
         return Response({'message': 'Check-in successful',
                 'member': member.user.get_full_name()}, status=201)
     
