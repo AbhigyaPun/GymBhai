@@ -3,7 +3,10 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-w%(qy)l^_eols#0=xqkjvjcher9+2c^46_g8$kcq6n1(o4r23_'
+import os
+from dotenv import load_dotenv
+load_dotenv()
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 DEBUG = True
 
@@ -107,7 +110,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'gymbhai100@gmail.com'
-EMAIL_HOST_PASSWORD = 'murl jorg bwue cxhw'
+
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = 'GymBhai <gymbhai100@gmail.com>'
 
