@@ -27,39 +27,52 @@ class ProgressProfileSerializer(serializers.ModelSerializer):
     def get_recommended_target(self, obj):
         if not obj.current_weight:
             return None
+        logs = obj.member.weight_logs.all()
+        w = float(logs.first().weight) if logs.exists() else float(obj.current_weight)
         goal = obj.member.goal
-        w    = float(obj.current_weight)
         if goal == 'bulk':
             return round(w * 1.10, 1)
         elif goal == 'cut':
             return round(w * 0.90, 1)
-        else:
-            return round(w, 1)
+        return round(w, 1)
 
     def get_progress_percentage(self, obj):
         if not obj.current_weight or not obj.target_weight:
             return 0
-        logs = obj.member.weight_logs.all()
-        if not logs:
-            return 0
-        start  = float(logs.last().weight)
         target = float(obj.target_weight)
-        current = float(logs.first().weight)
+        logs = obj.member.weight_logs.all()
+        if logs.count() >= 2:
+            start   = float(logs.last().weight)
+            current = float(logs.first().weight)
+        elif logs.count() == 1:
+            start   = float(obj.current_weight)
+            current = float(logs.first().weight)
+        else:
+            return 0
         if start == target:
             return 100
-        progress = abs(current - start) / abs(target - start) * 100
+        total_needed = abs(target - start)
+        if total_needed == 0:
+            return 100
+        going_right_direction = (
+            (target > start and current >= start) or
+            (target < start and current <= start)
+        )
+        if not going_right_direction:
+            return 0
+        progress = (abs(current - start) / total_needed) * 100
         return min(round(progress, 1), 100)
 
     def get_weight_to_goal(self, obj):
         if not obj.target_weight:
             return None
         logs = obj.member.weight_logs.all()
-        if not logs:
-            if not obj.current_weight:
-                return None
-            return round(abs(float(obj.target_weight) -
-                             float(obj.current_weight)), 1)
-        current = float(logs.first().weight)
+        if logs.exists():
+            current = float(logs.first().weight)
+        elif obj.current_weight:
+            current = float(obj.current_weight)
+        else:
+            return None
         return round(abs(float(obj.target_weight) - current), 1)
 
 
