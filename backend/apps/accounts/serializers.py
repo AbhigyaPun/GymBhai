@@ -8,7 +8,10 @@ class MemberSerializer(serializers.ModelSerializer):
     last_name  = serializers.CharField(source='user.last_name', required=False, allow_blank=True)
     email      = serializers.EmailField(source='user.email')
     username   = serializers.CharField(source='user.username', read_only=True)
-    checkins   = serializers.SerializerMethodField()
+    checkins = serializers.SerializerMethodField()
+
+    def get_checkins(self, obj):
+        return obj.attendances.count()
 
     class Meta:
         model  = Member

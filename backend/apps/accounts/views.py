@@ -145,7 +145,7 @@ class AttendanceScanView(APIView):
         qr_data = request.data.get('qr_data', '')
         parts = qr_data.split(':')
         
-        # Now expects: GYMBHAI:member_id:qr_token:phone:signature
+        
         if len(parts) != 5 or parts[0] != 'GYMBHAI':
             return Response({'error': 'Invalid QR code'}, status=400)
 

@@ -37,21 +37,18 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkLoginStatus() async {
-    // Small delay to show splash
-    await Future.delayed(const Duration(milliseconds: 800));
+  await Future.delayed(const Duration(milliseconds: 800));
+  if (!mounted) return;
 
-    if (!mounted) return;
+  final isLoggedIn = await AuthService.isLoggedIn();
+  if (!mounted) return;
 
-    final isLoggedIn = await AuthService.isLoggedIn();
-
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => isLoggedIn ? const MainShell() : const LoginScreen(),
-      ),
-    );
-  }
+  Navigator.of(context).pushReplacement(
+    MaterialPageRoute(
+      builder: (_) => isLoggedIn ? const MainShell() : const LoginScreen(),
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {

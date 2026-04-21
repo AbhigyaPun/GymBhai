@@ -26,3 +26,5 @@ frontend/build/
 frontend/.dart_tool/
 frontend/.idea/
 frontend/ios/Pods/
+
+backend/.env
