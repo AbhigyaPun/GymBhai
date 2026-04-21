@@ -199,8 +199,11 @@ class AttendanceScanView(APIView):
                         'member': member.user.get_full_name()})
 
         attendance = Attendance.objects.create(member=member)
-        return Response({'message': 'Check-in successful',
-                'member': member.user.get_full_name()}, status=201)
+        return Response({
+            'message': 'Check-in successful',
+            'member': member.user.get_full_name(),
+            'checked_in': attendance.checked_in.isoformat(),  
+        }, status=201)
 
 class AttendanceListView(APIView):
     """List all attendance records (admin only)"""
@@ -503,8 +506,11 @@ class ManualAttendanceView(APIView):
                         'member': member.user.get_full_name()})
 
         attendance = Attendance.objects.create(member=member)
-        return Response({'message': 'Check-in successful',
-                'member': member.user.get_full_name()}, status=201)
+        return Response({
+            'message': 'Check-in successful',
+            'member': member.user.get_full_name(),
+            'checked_in': attendance.checked_in.isoformat(), 
+        }, status=201)
     
 class GymBusyStatusView(APIView):
     permission_classes = [IsAuthenticated]
